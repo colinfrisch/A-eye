@@ -1,12 +1,13 @@
-import requests
+import requests, time
 from PIL import Image
 
 
 # Client makes a POST request with an image and a folder
 url = 'http://127.0.0.1:5000/process'
 image_path = 'media/test.jpg'
-sound_path = None
-mode = 'allaround'
+sound_path = 'media/Enregistrement.wav'
+mode = 'instruct'
+
 
 data = {
     'image_path': image_path,
@@ -14,5 +15,9 @@ data = {
     'mode': mode,
 }
 
-response = requests.post(url, image, sound, mode)
-print(response.json())  # This will print the result from the server
+start = time.time()
+response = requests.post(url, data)
+
+
+
+print(time.time()-start,response.json()['text'])  # This will print the result from the server

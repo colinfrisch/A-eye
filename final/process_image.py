@@ -65,11 +65,11 @@ def messages(base64_img,type='allaround',prompt="What should i know about what i
             {
                 "role": "system",
                 "content": """You are a helpful assistant expert in helping blind people in their day-to-day life.
-                You are his eyes so everything you see is from his point of view.""",
+                You are his eyes so everything you see is from his point of view. Your responses have to be quite short.""",
                 },
                 
             {"role": "user",
-            "content": [{"type": "text", "text": prompt + "Be very concise"},{"type": "image_url","image_url": {"url": f"data:image/jpeg;base64,{base64_img}"},},],},
+            "content": [{"type": "text", "text": prompt},{"type": "image_url","image_url": {"url": f"data:image/jpeg;base64,{base64_img}"},},],},
                 ]
     
     if type == 'ocr':
@@ -107,16 +107,23 @@ def process_input(image_path,audio_file=None):
 
     if audio_file==None :
         response = client.chat.completions.create(messages=messages(base64_img,'allaround'),model=MODEL,stream = False)
-    
+
+
     else :
+        start = time.time()
         prompt = speech_to_text_whisper(audio_file)
+        print(prompt,f'(processing time : {-start + time.time()})')
+
+        print('interracting with model')
         response = client.chat.completions.create(messages=messages(base64_img,'instruct',prompt),model=MODEL,stream = False)
 
 
     audio_path ='output.wav'
-    text_to_speech(engine,response,audio_path)
+
+    text_response = response.choices[0].message.content
+    text_to_speech(text_response,audio_path)
   
-    return {"text": response.choices[0].message.content, "audio_url": audio_path} 
+    return {"text": text_response, "audio_url": audio_path} 
 
 
 
@@ -124,10 +131,9 @@ def process_input(image_path,audio_file=None):
 
 @app.route('/process', methods=['POST'])
 def process_data():
-
-    image_path = request.image_path
-    sound_path = request.sound_path
-    mode = request.mode
+    image_path = request.form.get('image_path')
+    sound_path = request.form.get('sound_folder')
+    mode = request.form.get('mode')
     
     if mode == 'allaround':
         result = process_input(image_path)
@@ -135,6 +141,10 @@ def process_data():
         result = process_input(image_path,sound_path)
 
     return jsonify(result)
+
+@app.route('/process', methods=['GET'])
+def get_data():
+    return 'data'
 
 if __name__ == '__main__':
     app.run(debug=True)
