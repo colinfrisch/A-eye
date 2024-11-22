@@ -4,5 +4,5 @@ requests
 openai
 base64
 io
-whisper
+openai-whisper
 pyttsx3
