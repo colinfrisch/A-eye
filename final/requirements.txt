@@ -1,0 +1,8 @@
+pillow
+flask
+requests
+openai
+base64
+io
+whisper
+pyttsx3
