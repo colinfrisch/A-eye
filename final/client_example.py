@@ -1,4 +1,4 @@
-import requests, time
+import requests, time, base64
 from PIL import Image
 
 
@@ -8,16 +8,28 @@ image_path = 'media/test.jpg'
 sound_path = 'media/Enregistrement.wav'
 mode = 'instruct'
 
+with open(sound_path, "rb") as file:
+    wav_data = file.read()
+    sound_b64 = base64.b64encode(wav_data)
 
-data = {
-    'image_path': image_path,
-    'sound_folder': sound_path,
+with open(image_path, "rb") as file:
+    img_data = file.read()
+    image_b64 = base64.b64encode(img_data)
+
+
+
+
+data = {    
+    'image': image_b64,
+    'sound': sound_b64,
     'mode': mode,
 }
 
 start = time.time()
 response = requests.post(url, data)
 
+print(time.time()-start,response.json().keys())  # This will print the result from the server
 
-
-print(time.time()-start,response.json()['text'])  # This will print the result from the server
+sound_data = base64.b64decode(response.json()['audio_b64'])
+with open("final_sound.wav", "wb") as sound_file:
+        sound_file.write(sound_data)

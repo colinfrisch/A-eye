@@ -2,6 +2,8 @@ import base64, os, time, whisper, pyttsx3
 from PIL import Image
 from openai import OpenAI
 from io import BytesIO
+import io
+import torchaudio
 from API_setup import *
 from flask import Flask, request, jsonify
 
@@ -93,6 +95,12 @@ def text_to_speech(text,output_path):
     engine.save_to_file(text, output_path)
     engine.runAndWait()
 
+    with open(output_path, "rb") as file:
+        wav_data = file.read()
+    
+    return base64.b64encode(wav_data).decode('utf-8')
+
+
 
 def speech_to_text_whisper(audio_file):    
     start=time.time()
@@ -121,9 +129,11 @@ def process_input(image_path,audio_file=None):
     audio_path ='output.wav'
 
     text_response = response.choices[0].message.content
-    text_to_speech(text_response,audio_path)
+    sound_b64=text_to_speech(text_response,audio_path)
+
+
   
-    return {"text": text_response, "audio_url": audio_path} 
+    return {"text": text_response, "audio_b64": sound_b64} 
 
 
 
@@ -131,15 +141,33 @@ def process_input(image_path,audio_file=None):
 
 @app.route('/process', methods=['POST'])
 def process_data():
-    image_path = request.form.get('image_path')
-    sound_path = request.form.get('sound_folder')
+    # Get the base64-encoded sound and image from the request
+    image_b64 = request.form.get('image')
+    sound_b64 = request.form.get('sound')
     mode = request.form.get('mode')
-    
+
+    # Decode the base64-encoded image and sound data
+    image_data = base64.b64decode(image_b64)
+    sound_data = base64.b64decode(sound_b64)
+
+    # Save the image as a PIL Image and save it to disk
+    image_path = "image.jpg"
+    image = Image.open(io.BytesIO(image_data))  # Convert bytes to PIL image
+    image.save(image_path)  # Save the image
+
+    # Save the sound as a .wav file
+    sound_path = "sound.wav"
+    with open(sound_path, "wb") as sound_file:
+        sound_file.write(sound_data)  # Write the decoded sound data to a file
+
+
+    # Process input based on mode
     if mode == 'allaround':
         result = process_input(image_path)
     elif mode == 'instruct':
-        result = process_input(image_path,sound_path)
+        result = process_input(image_path, sound_path)
 
+    # Return the result as a JSON response
     return jsonify(result)
 
 @app.route('/process', methods=['GET'])
