@@ -7,3 +7,6 @@
 
 *.wav
 *.jpg
+
+**/__pycache__
+**/surTel

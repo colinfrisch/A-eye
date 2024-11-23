@@ -1,16 +1,17 @@
-import base64, os, time, whisper, pyttsx3
+import base64, os, time, whisper, pyttsx3, json,io
 from PIL import Image
 from openai import OpenAI
 from io import BytesIO
-import io
-import torchaudio
 from API_setup import *
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)
 
 #whisper init
 whisper_model = whisper.load_model('tiny')
+MODEL = "pixtral-12b-2409"
 
 
 # Initialize the pyttsx3 engine
@@ -18,77 +19,56 @@ engine = pyttsx3.init()
 voices = engine.getProperty('voices')
 engine.setProperty('voice', voices[1].id)
 
-
-def resize_image(image, width=None, height=None, keep_ratio=True):
-
-    # Open the image if a path is provided
-    if isinstance(image, str):
-        with Image.open(image) as img:
-            img = img.copy()  # Avoids issues with closed files
-    elif isinstance(image, Image.Image):
-        img = image
-    else:
-        raise ValueError("Invalid input: 'image' must be a file path or PIL.Image.Image object.")
-
-    # Ensure at least one of width or height is specified
-    if not width and not height:
-        raise ValueError("At least one of 'width' or 'height' must be specified.")
-
-    # Maintain aspect ratio if required
-    if keep_ratio:
-        original_width, original_height = img.size
-        if width and not height:  # Calculate height preserving ratio
-            height = int((width / original_width) * original_height)
-        elif height and not width:  # Calculate width preserving ratio
-            width = int((height / original_height) * original_width)
-        img.thumbnail((width, height), Image.LANCZOS)
-    else:
-        # Resize without preserving aspect ratio
-        if not width or not height:
-            raise ValueError("Both 'width' and 'height' must be specified when keep_ratio=False.")
-        img = img.resize((width, height), Image.LANCZOS)
-
-    return img
+json_history_file = 'chat_history.json'
+last_interaction_time = None
 
 
-def encode_image(image_path):
-    img = Image.open(image_path)
-    img_resized = resize_image(img, width=600)
-    buffered = BytesIO()
-    img_resized.save(buffered, format="JPEG")
-    encoded_string = base64.b64encode(buffered.getvalue()).decode("utf-8")
-    return encoded_string
 
+def messages(base64_imgs,prompt,history,type='instruct'):
 
-def messages(base64_img,type='allaround',prompt="What should i know about what is in front of me ? Be very concise (20 words max)."):
+    content = [
+        {"type": "text", "text": "These images are taken from a video, analyse them as a whole and be very brief in your answer. My prompt is "+prompt}] + [
+        {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{base64_img}"},
+        } for base64_img in base64_imgs
+    ]
 
-    if type == 'allaround' or type == 'instruct':
-        return [
-            {
-                "role": "system",
-                "content": """You are a helpful assistant expert in helping blind people in their day-to-day life.
-                You are his eyes so everything you see is from his point of view. Your responses have to be quite short.""",
-                },
-                
-            {"role": "user",
-            "content": [{"type": "text", "text": prompt},{"type": "image_url","image_url": {"url": f"data:image/jpeg;base64,{base64_img}"},},],},
-                ]
-    
-    if type == 'ocr':
-        return [
-            {
-                "role": "system",
-                "content": """You are an OCR transcribing machine""",
-                },
-                
-            {"role": "user",
-            "content": [{"type": "text", "text": """Act as an OCR assistant. Analyze the provided image and:
-                        1. Recognize all visible text in the image as accurately as possible.
-                        2. Maintain the original structure and formatting of the text.
-                        3. If any words or phrases are unclear, indicate this with [unclear] in your transcription.
-                        Provide only the transcription without any additional comments. Don't transcribe anything that is not the text you see. Your answer should be in markdown format"""},{"type": "image_url","image_url": {"url": f"data:image/jpeg;base64,{base64_img}"},},],},
-                ]
+    if type == 'instruct':
+        if history!= [] :
+            history = history[-5:]
+            return [
 
+                {
+                    "role": "system",
+                    "content": """  You are a helpful assistant expert in helping blind people in their day-to-day life.
+                    You are his eyes so everything you see is from his point of view. Do not forget that the person that you assist does not see anything so don't hesitate to give clear spatial directions respectively to his right and left. Your responses have to be very brief.""",
+                    }] +\
+                history +\
+                [{"role": "user",
+                "content": content}]
+                    
+        else:
+            return [
+
+                {
+                    "role": "system",
+                    "content": """  You are a helpful assistant expert in helping blind people in their day-to-day life.
+                    You are his eyes so everything you see is from his point of view. Do not forget that the person that you assist does not see anything so don't hesitate to give clear spatial directions respectively to his right and left. Your responses have to be very concise.""",
+                    },
+                    
+                {"role": "user",
+                "content": content},
+                    ]
+            
+def should_reset_history():
+    global last_interaction_time
+    current_time = time.time()
+    if last_interaction_time is None or current_time - last_interaction_time > 100:
+        last_interaction_time = current_time  # Met à jour le timestamp
+        return True
+    last_interaction_time = current_time  # Met à jour le timestamp
+    return False
 
 def text_to_speech(text,output_path):
     engine.setProperty('rate', 150)
@@ -101,78 +81,82 @@ def text_to_speech(text,output_path):
     return base64.b64encode(wav_data).decode('utf-8')
 
 
-
 def speech_to_text_whisper(audio_file):    
     start=time.time()
     result = whisper_model.transcribe(audio_file)
     #print(time.time()-start, result["text"])
     return result["text"]
 
-#Utilisation
-def process_input(image_path,audio_file=None):
 
-    base64_img = encode_image(image_path) #resizes and base64-encodes the image
+def process_input(image_b64,audio_file,history=[]):
+    global json_history_file
 
-    if audio_file==None :
-        response = client.chat.completions.create(messages=messages(base64_img,'allaround'),model=MODEL,stream = False)
+    start = time.time()
+    prompt = speech_to_text_whisper(audio_file)
+    print(prompt,f'(processing time : {-start + time.time()})')
 
-
-    else :
-        start = time.time()
-        prompt = speech_to_text_whisper(audio_file)
-        print(prompt,f'(processing time : {-start + time.time()})')
-
-        print('interracting with model')
-        response = client.chat.completions.create(messages=messages(base64_img,'instruct',prompt),model=MODEL,stream = False)
-
-
-    audio_path ='output.wav'
+    print('interracting with model')
+    response = client.chat.completions.create(messages=messages(image_b64,prompt,history,'instruct'),model=MODEL,stream = False)
 
     text_response = response.choices[0].message.content
+
+    history.append({"role": "user",
+                "content": prompt})
+    
+    history.append({"role": "assistant",
+                "content": text_response})
+    
+    with open(json_history_file, "w", encoding="utf-8") as fichier:
+        json.dump(history, fichier, indent=4, ensure_ascii=False)
+
+    audio_path ='output.wav'
     sound_b64=text_to_speech(text_response,audio_path)
+    print(text_response)
 
-
-  
     return {"text": text_response, "audio_b64": sound_b64} 
 
 
 
-
-
-@app.route('/process', methods=['POST'])
+@app.route('/instruct', methods=['POST'])
 def process_data():
-    # Get the base64-encoded sound and image from the request
-    image_b64 = request.form.get('image')
-    sound_b64 = request.form.get('sound')
-    mode = request.form.get('mode')
+    global json_history_file, last_interaction_time
 
-    # Decode the base64-encoded image and sound data
-    image_data = base64.b64decode(image_b64)
+    if should_reset_history():
+        history = []
+    else:
+        if os.path.exists(json_history_file):
+            with open(json_history_file, "r", encoding="utf-8") as f:
+                history = json.load(f)
+        else:
+            history = []
+
+    data = request.get_json()
+
+    image_b64 = data.get('images')
+    sound_b64 = data.get('sound')
+    mode = data.get('mode')
+
     sound_data = base64.b64decode(sound_b64)
 
-    # Save the image as a PIL Image and save it to disk
-    image_path = "image.jpg"
-    image = Image.open(io.BytesIO(image_data))  # Convert bytes to PIL image
-    image.save(image_path)  # Save the image
 
-    # Save the sound as a .wav file
     sound_path = "sound.wav"
     with open(sound_path, "wb") as sound_file:
         sound_file.write(sound_data)  # Write the decoded sound data to a file
 
 
-    # Process input based on mode
-    if mode == 'allaround':
-        result = process_input(image_path)
-    elif mode == 'instruct':
-        result = process_input(image_path, sound_path)
+    result = process_input(image_b64, sound_path, history)
+    play_audio_from_base64(result["audio_b64"])
 
-    # Return the result as a JSON response
     return jsonify(result)
 
-@app.route('/process', methods=['GET'])
-def get_data():
-    return 'data'
+def play_audio_from_base64(base64_audio):
+    # Decode the base64 string to binary data
+    audio_data = base64.b64decode(base64_audio)
+
+    # Save the binary data to a temporary file (WAV format for this example)
+    os.remove("temp_audio.wav")
+    with open("temp_audio.wav", "wb") as f:
+        f.write(audio_data)
 
 if __name__ == '__main__':
     app.run(debug=True)
