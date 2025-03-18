@@ -2,12 +2,13 @@
 
 ## AI-On-the-Edge Hackathon Project
 
-This project was developed for the AI-On-the-Edge Hackathon, which focused on creating innovative AI solutions that can run efficiently on edge devices. The hackathon challenged participants to develop applications that leverage AI capabilities while minimizing reliance on cloud infrastructure, enabling functionality in environments with limited connectivity.
+This project was developed for the "AI - On the edge" Hackathon, which focused on creating innovative AI solutions that can run efficiently on edge devices. The hackathon challenged participants to develop applications that leverage AI capabilities while minimizing reliance on cloud infrastructure, enabling functionality in environments with limited connectivity.
 
 ## Project Overview
 
-A-eye is an AI-powered vision assistant designed to help visually impaired individuals navigate their surroundings. The system:
+A-eye is an AI-powered vision assistant designed to help visually impaired individuals navigate their surroundings. It's designed to fit on an edge device such as a raspberry pi (8Go RAM minimum). 
 
+The system:
 1. Captures images from the user's environment
 2. Receives voice commands/questions from the user
 3. Processes the visual information using advanced AI models
@@ -29,8 +30,8 @@ A-eye consists of the following components:
 
 - **Backend Server**: Flask-based API that processes images and audio
 - **AI Models**:
-  - Whisper (OpenAI) for speech recognition
-  - Pixtral-12b-2409 for image analysis and contextual understanding
+  - Whisper (OpenAI) for speech recognition (on edge)
+  - Pixtral-12b-2409 for image analysis and contextual understanding - designed to be replaced by a smaller model directly on edge
 - **Data Flow**:
   - Client captures and sends images and audio to the server
   - Server processes inputs and generates appropriate responses
@@ -83,7 +84,6 @@ The system is designed to respond to voice commands such as:
 - "What objects are in front of me?"
 - "Is there a path clear to walk?"
 - "Can you read the sign ahead?"
-- "What color is the object to my right?"
 
 The AI will analyze the images and provide concise, helpful responses focused on helping the visually impaired user navigate their environment.
 
@@ -96,16 +96,15 @@ The AI will analyze the images and provide concise, helpful responses focused on
 
 ## Future Improvements
 
-- Improve edge processing capabilities for lower latency
-- Add object detection for more precise location information
+- Improve edge processing capabilities for lower latency (replace pixtral 12B)
 - Implement haptic feedback integration
 - Create mobile applications for easier deployment
 - Support for multiple languages
 
 ## Contributors
 
+- Léo Lebuhotel
+- Othmane Menkor
+- Yiwen Mai
+- Dorian Boucher
 - Colin Frisch
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
